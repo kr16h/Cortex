@@ -3,7 +3,7 @@ import os
 import argparse
 import time
 import logging
-from typing import List, Optional
+from typing import List, Optional, Dict
 from datetime import datetime
 
 # Suppress noisy log messages in normal operation
@@ -176,80 +176,90 @@ class CortexCLI:
             return 1
     # -------------------------------
 
-    #Handle 'cortex stack' commands using StackManager
-    def stack(self, args):
+    #Handle 'cortex stack' commands
+    def stack(self, args: argparse.Namespace) -> int:
         manager = StackManager()
-
-        # List stacks (default when no name/describe)
+        
         if args.list or (not args.name and not args.describe):
-            stacks = manager.list_stacks()
-            cx_print("\n📦 Available Stacks:\n", "info")
-            for stack in stacks:
-                pkg_count = len(stack.get("packages", []))
-                console.print(f"  [green]{stack['id']}[/green]")
-                console.print(f"    {stack['name']}")
-                console.print(f"    {stack['description']}")
-                console.print(f"    [dim]({pkg_count} packages)[/dim]\n")
-            cx_print("Use:  cortex stack <name> to install a stack", "info")
-            return 0
-
-        # Describe a specific stack
+            return self._handle_stack_list(manager)
+        
         if args.describe:
-            description = manager.describe_stack(args.describe)
-            console.print(description)
-            return 0
-
-        # Install a stack
+            return self._handle_stack_describe(manager, args.describe)
+        
         if args.name:
-            # Hardware-aware suggestion
-            original_name = args.name
-            suggested_name = manager.suggest_stack(args.name)
-
-            if suggested_name != original_name:
-                cx_print(
-                    f"💡 No GPU detected, using '{suggested_name}' instead of '{original_name}'",
-                    "info"
-                )
-
-            stack = manager.find_stack(suggested_name)
-            if not stack:
-                self._print_error(
-                    f"Stack '{suggested_name}' not found. Use --list to see available stacks."
-                )
-                return 1
-
-            packages = stack.get("packages", [])
-
-            # Dry run mode
-            if args.dry_run:
-                cx_print(f"\n📋 Stack:  {stack['name']}", "info")
-                console.print("\nPackages that would be installed:")
-                for pkg in packages:
-                    console.print(f"  • {pkg}")
-                console.print(f"\nTotal:  {len(packages)} packages")
-                cx_print("\nDry run only - no commands executed", "warning")
-                return 0
-
-            # Real install: delegate to existing install() per package
-            cx_print(f"\n🚀 Installing stack: {stack['name']}\n", "success")
-            total = len(packages)
-
-            for idx, pkg in enumerate(packages, 1):
-                cx_print(f"[{idx}/{total}] Installing {pkg}...", "info")
-                # Use the existing install flow with execution enabled
-                result = self.install(pkg, execute=True, dry_run=False)
-                if result != 0:
-                    self._print_error(
-                        f"Failed to install {pkg} from stack '{stack['name']}'"
-                    )
-                    return 1
-
-            self._print_success(f"\n✅ Stack '{stack['name']}' installed successfully!")
-            console.print(f"Installed {len(packages)} packages")
-            return 0
-
+            return self._handle_stack_install(manager, args)
+        
         self._print_error("No stack name provided. Use --list to see available stacks.")
         return 1
+
+    def _handle_stack_list(self, manager: StackManager) -> int:
+        stacks = manager.list_stacks()
+        cx_print("\n📦 Available Stacks:\n", "info")
+        for stack in stacks:
+            pkg_count = len(stack.get("packages", []))
+            console.print(f"  [green]{stack['id']}[/green]")
+            console.print(f"    {stack['name']}")
+            console.print(f"    {stack['description']}")
+            console.print(f"    [dim]({pkg_count} packages)[/dim]\n")
+        cx_print("Use: cortex stack <name> to install a stack", "info")
+        return 0
+
+    def _handle_stack_describe(self, manager: StackManager, stack_id: str) -> int:
+        description = manager.describe_stack(stack_id)
+        console.print(description)
+        return 0
+
+    def _handle_stack_install(self, manager: StackManager, args: argparse.Namespace) -> int:
+        original_name = args.name
+        suggested_name = manager.suggest_stack(args.name)
+        
+        if suggested_name != original_name:
+            cx_print(
+                f"💡 No GPU detected, using '{suggested_name}' instead of '{original_name}'",
+                "info"
+            )
+        
+        stack = manager.find_stack(suggested_name)
+        if not stack:
+            self._print_error(
+                f"Stack '{suggested_name}' not found. Use --list to see available stacks."
+            )
+            return 1
+        
+        packages = stack.get("packages", [])
+        
+        if args.dry_run:
+            return self._handle_stack_dry_run(stack, packages)
+        
+        return self._handle_stack_real_install(stack, packages)
+
+    def _handle_stack_dry_run(self, stack: Dict, packages: List[str]) -> int:
+        cx_print(f"\n📋 Stack: {stack['name']}", "info")
+        console.print("\nPackages that would be installed:")
+        for pkg in packages:
+            console.print(f"  • {pkg}")
+        console.print(f"\nTotal: {len(packages)} packages")
+        cx_print("\nDry run only - no commands executed", "warning")
+        return 0
+
+    def _handle_stack_real_install(self, stack: Dict, packages: List[str]) -> int:
+        cx_print(f"\n🚀 Installing stack: {stack['name']}\n", "success")
+        total = len(packages)
+        
+        for idx, pkg in enumerate(packages, 1):
+            cx_print(f"[{idx}/{total}] Installing {pkg}...", "info")
+            result = self.install(software=pkg, execute=True, dry_run=False)
+            
+            if result != 0:
+                self._print_error(
+                    f"Failed to install {pkg} from stack '{stack['name']}'"
+                )
+                return 1
+        
+        self._print_success(f"\n✅ Stack '{stack['name']}' installed successfully!")
+        console.print(f"Installed {len(packages)} packages")
+        return 0
+
 
     
     def install(self, software: str, execute: bool = False, dry_run: bool = False):
@@ -730,7 +740,7 @@ def main():
             return cli.notify(args)
                 
         elif args.command == 'stack':
-            return cli.stack(args)
+                    return cli.stack(args)
         
         else:
             parser.print_help()
