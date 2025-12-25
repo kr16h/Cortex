@@ -6,6 +6,7 @@ import time
 from datetime import datetime
 from typing import Any
 
+from cortex.ask import AskHandler
 from cortex.branding import VERSION, console, cx_header, cx_print, show_banner
 from cortex.coordinator import InstallationCoordinator, StepStatus
 from cortex.demo import run_demo
@@ -324,6 +325,36 @@ class CortexCLI:
             return 1
         except Exception as e:
             console.print(f"[red]✗ Script command failed: {str(e)}[/red]")
+    def ask(self, question: str) -> int:
+        """Answer a natural language question about the system."""
+        api_key = self._get_api_key()
+        if not api_key:
+            return 1
+
+        provider = self._get_provider()
+        self._debug(f"Using provider: {provider}")
+
+        try:
+            handler = AskHandler(
+                api_key=api_key,
+                provider=provider,
+                offline=self.offline,
+            )
+            answer = handler.ask(question)
+            console.print(answer)
+            return 0
+        except ImportError as e:
+            # Provide a helpful message if provider SDK is missing
+            self._print_error(str(e))
+            cx_print(
+                "Install the required SDK or set CORTEX_PROVIDER=ollama for local mode.", "info"
+            )
+            return 1
+        except ValueError as e:
+            self._print_error(str(e))
+            return 1
+        except RuntimeError as e:
+            self._print_error(str(e))
             return 1
 
     def install(
@@ -796,13 +827,14 @@ def show_rich_help():
     table.add_column("Command", style="green")
     table.add_column("Description")
 
+    table.add_row("ask <question>", "Ask about your system")
     table.add_row("demo", "See Cortex in action")
     table.add_row("wizard", "Configure API key")
     table.add_row("status", "System status")
     table.add_row("install <pkg>", "Install software")
     table.add_row("history", "View history")
     table.add_row("rollback <id>", "Undo installation")
-    table.add_row("notify", "Manage desktop notifications")  # Added this line
+    table.add_row("notify", "Manage desktop notifications")
     table.add_row("cache stats", "Show LLM cache statistics")
     table.add_row("stack <name>", "Install the stack")
     table.add_row("doctor", "System health check")
@@ -906,6 +938,9 @@ def main():
     history_parser.add_argument(
         "--limit", "-l", type=int, default=10, help="Number of entries to show (default: 10)"
     )
+    # Ask command
+    ask_parser = subparsers.add_parser("ask", help="Ask a question about your system")
+    ask_parser.add_argument("question", type=str, help="Natural language question")
 
     # Install command
     install_parser = subparsers.add_parser("install", help="Install software")
@@ -989,6 +1024,8 @@ def main():
             return cli.wizard()
         elif args.command == "status":
             return cli.status()
+        elif args.command == "ask":
+            return cli.ask(args.question)
         elif args.command == "install":
             return cli.install(
                 args.software,
