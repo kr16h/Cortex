@@ -321,10 +321,12 @@ class CortexCLI:
                 return 0
 
         except FileNotFoundError:
-            console.print(f"[red]✗ Script file not found: {args.filename}[/red]")
+            filename = getattr(args, "filename", "unknown")
+            console.print(f"[red]✗ Script file not found: {filename}[/red]")
             return 1
         except Exception as e:
             console.print(f"[red]✗ Script command failed: {str(e)}[/red]")
+            return 1
 
     def ask(self, question: str) -> int:
         """Answer a natural language question about the system."""
