@@ -282,7 +282,12 @@ class CortexCLI:
         return 0
 
     # Run system health checks
-    def doctor(self):
+    def doctor(self) -> int:
+        """Run system health checks and diagnostics.
+
+        Returns:
+         Exit code: 0 if healthy, 1 if warnings, 2 if failures
+        """
         from cortex.doctor import SystemDoctor
 
         doctor = SystemDoctor()
