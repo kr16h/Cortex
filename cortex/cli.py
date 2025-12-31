@@ -322,6 +322,9 @@ class CortexCLI:
                 limit = args.limit
                 generator.show_history(limit=limit)
                 return 0
+            else:
+                console.print(f"[red]✗ Unknown script action: {args.script_action}[/red]")
+                return 1
 
         except FileNotFoundError:
             filename = getattr(args, "filename", "unknown")
